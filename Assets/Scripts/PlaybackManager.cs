@@ -2,14 +2,14 @@ using UnityEngine;
 
 /// <summary>
 /// Main manager for coordinating the CSV data playback system
+/// Manages CSVDataLoader, PlaybackController, and LocationVisualizer
 /// </summary>
 public class PlaybackManager : MonoBehaviour
 {
     // Core Components - managed internally
     private CSVDataLoader dataLoader;
-    private TimelinePlaybackController playbackController;
+    private PlaybackController playbackController;
     private LocationVisualizer visualizer;
-    private PlaybackUIManager uiManager;
     
     [Header("Auto Setup")]
     [SerializeField] private bool autoCreateComponents = true;
@@ -75,18 +75,15 @@ public class PlaybackManager : MonoBehaviour
             }
         }
         
-        // DISABLED: TimelinePlaybackController is deprecated
-        // Using PlaybackController as the main playback controller
-        /*
+        // Find or create PlaybackController
         if (playbackController == null)
         {
-            playbackController = GetComponent<TimelinePlaybackController>();
+            playbackController = GetComponent<PlaybackController>();
             if (playbackController == null)
             {
-                playbackController = gameObject.AddComponent<TimelinePlaybackController>();
+                playbackController = gameObject.AddComponent<PlaybackController>();
             }
         }
-        */
         
         // Find or create LocationVisualizer
         if (visualizer == null)
@@ -99,16 +96,6 @@ public class PlaybackManager : MonoBehaviour
             }
         }
         
-        // Find or create PlaybackUIManager
-        if (uiManager == null)
-        {
-            uiManager = FindObjectOfType<PlaybackUIManager>();
-            if (uiManager == null)
-            {
-                GameObject uiGO = new GameObject("PlaybackUIManager");
-                uiManager = uiGO.AddComponent<PlaybackUIManager>();
-            }
-        }
         
         Debug.Log("PlaybackManager: All components set up successfully");
     }

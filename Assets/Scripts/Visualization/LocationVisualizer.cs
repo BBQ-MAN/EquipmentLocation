@@ -8,7 +8,7 @@ public class LocationVisualizer : MonoBehaviour
     [SerializeField] private GameObject trailPrefab;
     [SerializeField] private Transform visualizationParent;
     [SerializeField] private float heightOffset = 0.5f;
-    [SerializeField] private float worldScale = 1.0f;
+    [SerializeField] private float worldScale = 10.0f; // Increased for better visibility
     
     [Header("Point Appearance")]
     [SerializeField] private Color[] pointColors = {
@@ -30,8 +30,9 @@ public class LocationVisualizer : MonoBehaviour
     [SerializeField] private bool showLabels = true;
     [SerializeField] private GameObject labelPrefab;
     
+    
     // References - managed internally
-    private TimelinePlaybackController playbackController;
+    private PlaybackController playbackController;
     private CSVDataLoader dataLoader;
     
     // Tracking objects for each point
@@ -39,6 +40,7 @@ public class LocationVisualizer : MonoBehaviour
     private Dictionary<int, TrailRenderer> trailRenderers = new Dictionary<int, TrailRenderer>();
     private Dictionary<int, TextMesh> pointLabels = new Dictionary<int, TextMesh>();
     private Dictionary<int, List<Vector3>> positionHistory = new Dictionary<int, List<Vector3>>();
+    private Dictionary<int, Vector3> previousPositions = new Dictionary<int, Vector3>();
     
     // Bounds for visualization
     private Vector3 minBounds;
@@ -49,7 +51,7 @@ public class LocationVisualizer : MonoBehaviour
         Debug.Log("LocationVisualizer: Start called");
         
         if (playbackController == null)
-            playbackController = FindObjectOfType<TimelinePlaybackController>();
+            playbackController = FindObjectOfType<PlaybackController>();
         
         if (dataLoader == null)
             dataLoader = FindObjectOfType<CSVDataLoader>();
@@ -60,11 +62,11 @@ public class LocationVisualizer : MonoBehaviour
             visualizationParent = parent.transform;
         }
         
-        // Subscribe to events
+        // Note: PlaybackController calls OnPlaybackUpdate via reflection
+        // No event subscription needed
         if (playbackController != null)
         {
-            playbackController.OnPlaybackUpdate += OnPlaybackUpdate;
-            Debug.Log("LocationVisualizer: Subscribed to OnPlaybackUpdate");
+            Debug.Log("LocationVisualizer: PlaybackController found");
         }
         else
         {
@@ -250,6 +252,7 @@ public class LocationVisualizer : MonoBehaviour
         
         pointObjects[pointNumber] = point;
         positionHistory[pointNumber] = new List<Vector3>();
+        previousPositions[pointNumber] = Vector3.zero; // Initialize previous position
     }
     
     void OnPlaybackUpdate(float currentTime, List<LocationData> currentData)
@@ -273,13 +276,41 @@ public class LocationVisualizer : MonoBehaviour
                 
                 // Convert data coordinates to world position
                 Vector3 worldPos = DataToWorldPosition(data.locationX, data.locationY);
-                Vector3 oldPos = point.transform.position;
+                
+                // Get previous position for this device
+                Vector3 oldPos = previousPositions.ContainsKey(deviceId) ? previousPositions[deviceId] : worldPos;
+                
                 point.transform.position = worldPos;
                 point.SetActive(true);
                 
-                // Log movement for each device
+                // Rotate to face movement direction (X-axis forward)
+                if (oldPos != worldPos && Vector3.Distance(oldPos, worldPos) > 0.01f)
+                {
+                    Vector3 moveDirection = (worldPos - oldPos);
+                    moveDirection.y = 0; // Keep rotation only on horizontal plane
+                    
+                    if (moveDirection.magnitude > 0.01f)
+                    {
+                        moveDirection.Normalize();
+                        
+                        // Method 1: Direct rotation from Vector3.right to movement direction
+                        Quaternion targetRotation = Quaternion.FromToRotation(Vector3.right, moveDirection);
+                        
+                        // Apply rotation immediately
+                        point.transform.rotation = targetRotation;
+                        
+                        float angle = Mathf.Atan2(moveDirection.z, moveDirection.x) * Mathf.Rad2Deg;
+                        Debug.Log($"Device {deviceId}: Moving ({moveDirection.x:F2}, {moveDirection.z:F2}) Angle: {angle:F1}°");
+                    }
+                }
+                
+                // Store current position as previous for next update
+                previousPositions[deviceId] = worldPos;
+                
+                // Log movement and rotation for each device
                 float distance = Vector3.Distance(oldPos, worldPos);
-                Debug.Log($"Device {deviceId}: Moved from {oldPos} to {worldPos} (distance: {distance:F3}m) - Data: X={data.locationX:F2}, Y={data.locationY:F2}");
+                float rotationAngle = point.transform.rotation.eulerAngles.y;
+                Debug.Log($"Device {deviceId}: Pos({data.locationX:F2}, {data.locationY:F2}) → World({worldPos.x:F2}, {worldPos.z:F2}) | Distance: {distance:F3}m | Rotation: {rotationAngle:F1}°");
                 
                 // Update position history using deviceId
                 if (!positionHistory.ContainsKey(deviceId))
@@ -324,11 +355,20 @@ public class LocationVisualizer : MonoBehaviour
     {
         // Convert data coordinates to Unity world coordinates
         // Data uses X,Y but Unity uses X,Z for horizontal plane
-        return new Vector3(
+        // worldScale amplifies the movement for better visibility
+        Vector3 worldPos = new Vector3(
             dataX * worldScale,
             heightOffset,
             dataY * worldScale
         );
+        
+        // Log conversion for debugging (only log periodically to avoid spam)
+        if (Time.frameCount % 60 == 0)
+        {
+            Debug.Log($"DataToWorld: ({dataX:F2}, {dataY:F2}) → ({worldPos.x:F2}, {worldPos.z:F2}) with scale {worldScale}");
+        }
+        
+        return worldPos;
     }
     
     public void SetShowTrails(bool show)
@@ -372,6 +412,7 @@ public class LocationVisualizer : MonoBehaviour
         trailRenderers.Clear();
         pointLabels.Clear();
         positionHistory.Clear();
+        previousPositions.Clear();
     }
     
     public void ClearTrails()
@@ -392,11 +433,7 @@ public class LocationVisualizer : MonoBehaviour
     
     void OnDestroy()
     {
-        // Unsubscribe from events
-        if (playbackController != null)
-        {
-            playbackController.OnPlaybackUpdate -= OnPlaybackUpdate;
-        }
+        // Clean up
         
         if (dataLoader != null)
         {

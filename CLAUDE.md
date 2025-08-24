@@ -23,17 +23,15 @@ Unity 3D project for visualizing and replaying equipment location tracking data 
 ### Core Components (All managed by PlaybackManager singleton)
 
 1. **Data Layer** (`Assets/Scripts/DataModels/`)
-   - `LocationData.cs`: Data model for position entries (date, time, milliseconds, pointNumber, X/Y coordinates)
+   - `LocationData.cs`: Data model for position entries (date, time, milliseconds, deviceId, X/Y coordinates)
    - `CSVDataLoader.cs`: Loads and manages CSV data, handles time-based queries and interpolation
 
-2. **Playback System** (`Assets/Scripts/Playback/`)
-   - `TimelinePlaybackController.cs`: Controls time-based playback (play/pause/stop, speed control, timeline seeking)
+2. **Playback System** (`Assets/Scripts/`)
+   - `PlaybackController.cs`: Main playback controller (play/pause/stop/reset, speed control, timeline seeking)
+   - `PlaybackManager.cs`: Singleton coordinator for all components
 
 3. **Visualization** (`Assets/Scripts/Visualization/`)
    - `LocationVisualizer.cs`: 3D rendering of position data with trails, labels, and point markers
-
-4. **UI Management** (`Assets/Scripts/UI/`)
-   - `PlaybackUIManager.cs`: Manages all UI controls (buttons, sliders, text displays)
 
 ### CSV Data Format
 ```csv
@@ -84,12 +82,20 @@ Components are designed to work independently but are coordinated through Playba
 
 ### Inspector Configuration
 Key settings exposed in Unity Inspector:
+
+**PlaybackManager:**
 - `autoCreateComponents`: Automatically set up required components
 - `autoLoadDataOnStart`: Load CSV data on Start()
 - `autoPlayOnLoad`: Begin playback after data loads
-- `playbackSpeed`: Adjustable from 0.25x to 8x
-- `loop`: Enable continuous playback
-- `interpolateMovement`: Smooth movement between data points
+
+**PlaybackController:**
+- `playbackSpeed`: Adjustable from 0.25x to 4x (Range slider)
+- Read-only status fields for debugging
+
+**LocationVisualizer:**
+- `worldScale`: Coordinate scaling for better visibility (default 10.0)
+- `showTrails`: Enable/disable trail rendering
+- `showLabels`: Enable/disable coordinate labels
 
 ### Prefab Usage
 `EquipmentPrefab.prefab` is instantiated dynamically for each unique point number in the data.

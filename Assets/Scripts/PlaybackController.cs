@@ -24,9 +24,14 @@ public class PlaybackController : MonoBehaviour
     public float playbackSpeed = 1.0f;
     
     [Header("Status (Read Only)")]
-    [SerializeField] private bool isPlaying = false;
-    [SerializeField] private float currentTime = 0f;
+    [SerializeField] private bool _isPlaying = false;
+    [SerializeField] private float _currentTime = 0f;
     [SerializeField] private float totalDuration = 0f;
+    
+    // Public properties for external access
+    public bool isPlaying => _isPlaying;
+    public float currentTime => _currentTime;
+    public float normalizedTime => (dataLoader != null && dataLoader.totalDuration > 0) ? _currentTime / dataLoader.totalDuration : 0f;
     
     void Start()
     {
@@ -59,12 +64,14 @@ public class PlaybackController : MonoBehaviour
     
     void SetupUIButtons()
     {
-        // Try to find UI buttons from the scene
-        if (playButton == null)
+        try
         {
-            var playGO = GameObject.Find("PlayButton");
-            if (playGO != null) playButton = playGO.GetComponent<Button>();
-        }
+            // Try to find UI buttons from the scene
+            if (playButton == null)
+            {
+                var playGO = GameObject.Find("PlayButton");
+                if (playGO != null) playButton = playGO.GetComponent<Button>();
+            }
         
         if (pauseButton == null)
         {
@@ -129,6 +136,11 @@ public class PlaybackController : MonoBehaviour
             timelineSlider.onValueChanged.AddListener(OnSliderChanged);
             Debug.Log("PlaybackController: Timeline slider connected");
         }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"PlaybackController: Error setting up UI buttons - {e.Message}");
+        }
     }
     
     void OnDataLoaded()
@@ -141,7 +153,7 @@ public class PlaybackController : MonoBehaviour
     {
         if (dataLoader != null && dataLoader.totalDuration > 0)
         {
-            isPlaying = true;
+            _isPlaying = true;
             Debug.Log("PlaybackController: Playing");
             
             // Toggle button visibility
@@ -155,7 +167,7 @@ public class PlaybackController : MonoBehaviour
     
     public void Pause()
     {
-        isPlaying = false;
+        _isPlaying = false;
         Debug.Log("PlaybackController: Paused");
         
         // Toggle button visibility
@@ -168,8 +180,8 @@ public class PlaybackController : MonoBehaviour
     
     public void Stop()
     {
-        isPlaying = false;
-        currentTime = 0f;
+        _isPlaying = false;
+        _currentTime = 0f;
         Debug.Log("PlaybackController: Stopped");
         
         // Reset button visibility
@@ -210,27 +222,52 @@ public class PlaybackController : MonoBehaviour
         Debug.Log("PlaybackController: Reset complete");
     }
     
+    public void SetPlaybackSpeed(float speed)
+    {
+        playbackSpeed = Mathf.Clamp(speed, 0.25f, 4.0f);
+        Debug.Log($"PlaybackController: Playback speed set to {playbackSpeed}x");
+    }
+    
+    public void SeekToTime(float time)
+    {
+        if (dataLoader == null || dataLoader.totalDuration <= 0)
+            return;
+        
+        _currentTime = Mathf.Clamp(time, 0f, dataLoader.totalDuration);
+        UpdateVisualization();
+        UpdateUI();
+    }
+    
+    public void SeekToNormalizedTime(float normalizedTime)
+    {
+        if (dataLoader == null || dataLoader.totalDuration <= 0)
+            return;
+        
+        float targetTime = normalizedTime * dataLoader.totalDuration;
+        SeekToTime(targetTime);
+    }
+    
     void OnSliderChanged(float value)
     {
         if (dataLoader != null && dataLoader.totalDuration > 0)
         {
-            currentTime = value * dataLoader.totalDuration;
+            _currentTime = value * dataLoader.totalDuration;
             UpdateVisualization();
         }
     }
     
     void Update()
     {
-        if (!isPlaying || dataLoader == null || dataLoader.totalDuration <= 0)
+        if (!_isPlaying || dataLoader == null || dataLoader.totalDuration <= 0)
             return;
         
         // Update time
-        currentTime += Time.deltaTime * playbackSpeed;
+        _currentTime += Time.deltaTime * playbackSpeed;
         
         // Handle end of playback
-        if (currentTime >= dataLoader.totalDuration)
+        if (_currentTime >= dataLoader.totalDuration)
         {
-            currentTime = dataLoader.totalDuration;
+            _currentTime = dataLoader.totalDuration;
             Stop(); // Stop at the end
             return;
         }
@@ -241,12 +278,21 @@ public class PlaybackController : MonoBehaviour
     
     void UpdateVisualization()
     {
-        if (dataLoader == null || visualizer == null)
+        if (dataLoader == null)
+        {
+            Debug.LogWarning("PlaybackController: dataLoader is null in UpdateVisualization");
             return;
+        }
+        
+        if (visualizer == null)
+        {
+            Debug.LogWarning("PlaybackController: visualizer is null in UpdateVisualization");
+            return;
+        }
             
         // Get data for current time
-        var device1Data = dataLoader.GetInterpolatedDataForDevice(1, currentTime);
-        var device2Data = dataLoader.GetInterpolatedDataForDevice(2, currentTime);
+        var device1Data = dataLoader.GetInterpolatedDataForDevice(1, _currentTime);
+        var device2Data = dataLoader.GetInterpolatedDataForDevice(2, _currentTime);
         
         // Create list for visualizer
         var currentData = new List<LocationData>();
@@ -256,17 +302,28 @@ public class PlaybackController : MonoBehaviour
         // Call visualizer update directly using reflection
         if (currentData.Count > 0)
         {
-            var method = visualizer.GetType().GetMethod("OnPlaybackUpdate", 
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (method != null)
+            try
             {
-                method.Invoke(visualizer, new object[] { currentTime, currentData });
+                var method = visualizer.GetType().GetMethod("OnPlaybackUpdate", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (method != null)
+                {
+                    method.Invoke(visualizer, new object[] { _currentTime, currentData });
+                }
+                else
+                {
+                    Debug.LogWarning("PlaybackController: OnPlaybackUpdate method not found in LocationVisualizer");
+                }
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"PlaybackController: Error calling OnPlaybackUpdate - {e.Message}");
             }
             
             // Log periodically
             if (Time.frameCount % 60 == 0)
             {
-                Debug.Log($"PlaybackController: Time={currentTime:F2}/{dataLoader.totalDuration:F2}, Devices={currentData.Count}");
+                Debug.Log($"PlaybackController: Time={_currentTime:F2}/{dataLoader.totalDuration:F2}, Devices={currentData.Count}");
             }
         }
     }
@@ -276,14 +333,14 @@ public class PlaybackController : MonoBehaviour
         // Update timeline slider
         if (timelineSlider != null && dataLoader != null && dataLoader.totalDuration > 0)
         {
-            timelineSlider.SetValueWithoutNotify(currentTime / dataLoader.totalDuration);
+            timelineSlider.SetValueWithoutNotify(_currentTime / dataLoader.totalDuration);
         }
         
         // Update time text
         if (timeText != null && dataLoader != null)
         {
-            int currentMinutes = Mathf.FloorToInt(currentTime / 60f);
-            int currentSeconds = Mathf.FloorToInt(currentTime % 60f);
+            int currentMinutes = Mathf.FloorToInt(_currentTime / 60f);
+            int currentSeconds = Mathf.FloorToInt(_currentTime % 60f);
             int totalMinutes = Mathf.FloorToInt(dataLoader.totalDuration / 60f);
             int totalSeconds = Mathf.FloorToInt(dataLoader.totalDuration % 60f);
             
