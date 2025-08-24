@@ -13,7 +13,7 @@ public class PlaybackManager : MonoBehaviour
     
     [Header("Auto Setup")]
     [SerializeField] private bool autoCreateComponents = true;
-    [SerializeField] private bool autoLoadDataOnStart = true;
+    [SerializeField] private bool autoLoadDataOnStart = false; // Changed to false - user must click Load button
     [SerializeField] private bool autoPlayOnLoad = false;
     
     private static PlaybackManager instance;

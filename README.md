@@ -1,18 +1,21 @@
 # Equipment Location Tracking System
 
-Unity 기반 장비 위치 추적 및 시각화 애플리케이션
+Unity 기반 위치 측위 데이터 재생 및 시각화 시스템
 
 ## 개요
 
-이 애플리케이션은 Excel/CSV 파일에서 장비 위치 데이터를 읽어 Unity 3D 환경에서 시간에 따른 장비 이동을 시각화합니다. 타임라인 기반 재생 기능과 알람 표시 기능을 제공합니다.
+이 애플리케이션은 CSV 파일에서 위치 측위 데이터를 읽어 Unity 3D 환경에서 시간에 따른 위치 변화를 시각화합니다. 실제 측정된 스마트폰 위치 데이터를 시간의 흐름대로 재생하며, 다양한 재생 제어 기능을 제공합니다.
 
 ## 주요 기능
 
-- **CSV/Excel 파일 로딩**: 장비 위치 데이터를 파일에서 읽기
-- **3D 지형 시각화**: 지형 위에 장비 위치 표시
-- **시간 기반 재생**: 타임라인 슬라이더를 통한 시간 제어
-- **부드러운 이동 애니메이션**: 위치 간 자연스러운 보간
-- **알람 마커**: 타임라인에 중요 이벤트 표시
+- **다중 CSV 파일 로딩**: 여러 기기의 위치 데이터 동시 처리
+- **시간 기반 재생 시스템**: 실제 타임스탬프 기반 정확한 재생
+- **실시간 3D 시각화**: 위치 데이터의 3D 공간 표현
+- **재생 제어**: 재생/일시정지/정지, 속도 조절 (0.25x ~ 8x)
+- **타임라인 탐색**: 슬라이더를 통한 시간 이동
+- **위치 보간**: 부드러운 움직임을 위한 데이터 보간
+- **이동 궤적 표시**: Trail Renderer를 통한 경로 시각화
+- **포인트별 라벨**: 위치 정보 실시간 표시
 
 ## 시스템 요구사항
 
@@ -27,126 +30,184 @@ Assets/
 ├── Scenes/
 │   └── EquipmentLocationScene.unity    # 메인 씬
 ├── Scripts/
-│   ├── EquipmentData.cs                # 장비 데이터 모델
-│   ├── ExcelFileReader.cs              # CSV 파일 파서
-│   ├── SimpleLocationController.cs     # 메인 컨트롤러
-│   ├── EquipmentMovementController.cs  # 이동 보간 시스템
-│   └── AlarmMarkerSystem.cs           # 알람 마커 관리
-└── Prefabs/
-    └── EquipmentPrefab.prefab          # 장비 표시용 프리팹
+│   ├── DataModels/
+│   │   ├── LocationData.cs             # 위치 데이터 모델
+│   │   └── CSVDataLoader.cs            # CSV 데이터 로더
+│   ├── Playback/
+│   │   └── TimelinePlaybackController.cs # 시간 기반 재생 제어
+│   ├── Visualization/
+│   │   └── LocationVisualizer.cs       # 3D 위치 시각화
+│   ├── UI/
+│   │   └── PlaybackUIManager.cs        # UI 인터페이스 관리
+│   └── PlaybackManager.cs              # 메인 시스템 매니저
+├── Prefabs/
+│   └── EquipmentPrefab.prefab          # 장비 표시용 프리팹
+└── ../Documents/
+    └── 위츠측위 테스트 데이터/
+        └── Raw Data/
+            ├── 위치측위 Raw Data(스마트폰_1).csv
+            └── 위치측위 Raw Data(스마트폰_2).csv
 ```
 
 ## 데이터 형식
 
 ### CSV 파일 구조
 ```csv
-EquipmentID,Timestamp,X,Y,Z,EventType,Description
-EQ001,0,10,0,10,,
-EQ001,10,20,0,15,,
-EQ001,20,30,0,20,alarm,Equipment Alert
-EQ002,0,5,0,5,,
-EQ002,10,15,0,10,,
+DATE,HHMM,SEC,PTNUM,location (X) / m,location (Y) / m
+20250717,1034,29946,1,1.75,2.3
+20250717,1034,30925,1,1.366053623,1.073841422
+20250717,1034,31952,1,1.56720418,1.709844
 ```
 
 ### 필드 설명
-- **EquipmentID**: 장비 고유 식별자
-- **Timestamp**: 시간 (초 단위)
-- **X, Y, Z**: 3D 공간 좌표
-- **EventType**: 이벤트 유형 (옵션, "alarm" 등)
-- **Description**: 이벤트 설명 (옵션)
+- **DATE**: 측정 날짜 (YYYYMMDD 형식)
+- **HHMM**: 측정 시간 (HHMM 형식)
+- **SEC**: 밀리초 단위 시간
+- **PTNUM**: 측정 포인트 번호 (1~6)
+- **location (X) / m**: X 좌표 (미터 단위)
+- **location (Y) / m**: Y 좌표 (미터 단위)
 
 ## 사용 방법
 
-### 1. 씬 실행
+### 1. 빠른 시작
 1. Unity Editor에서 프로젝트 열기
-2. `Assets/Scenes/EquipmentLocationScene` 씬 로드
-3. Play 버튼 클릭
+2. 빈 GameObject 생성 → "PlaybackManager" 이름 설정
+3. PlaybackManager.cs 스크립트 추가
+4. Play 버튼 클릭 → 자동으로 CSV 데이터 로드 및 시각화
 
-### 2. 데이터 로드
-1. "Load File" 버튼 클릭
-2. CSV 파일 선택
-3. 데이터가 자동으로 로드되고 정렬됨
+### 2. 재생 제어
+- **재생/일시정지**: Space 키 또는 Play/Pause 버튼
+- **정지**: Stop 버튼
+- **속도 조절**: +/- 버튼 또는 슬라이더 (0.25x ~ 8x)
+- **타임라인 탐색**: 타임라인 슬라이더로 특정 시간 이동
 
-### 3. 재생 제어
-- **타임라인 슬라이더**: 특정 시간으로 이동
-- **Play 버튼**: 실시간 재생 시작
-- **Pause 버튼**: 재생 일시정지
-- **재생 속도**: SimpleLocationController의 playbackSpeed 조정
+### 3. 시각화 옵션
+- **궤적 표시**: Trail 토글로 이동 경로 표시/숨김
+- **라벨 표시**: 포인트 번호와 좌표 정보 표시
+- **보간 모드**: 부드러운 움직임 활성화/비활성화
+- **루프 재생**: 자동 반복 재생 설정
 
-## 스크립트 상세
+## 핵심 컴포넌트
 
-### EquipmentData.cs
+### LocationData.cs
+위치 데이터 모델 클래스
 ```csharp
-[System.Serializable]
-public class EquipmentData
-{
-    public string equipmentId;    // 장비 ID
-    public float timestamp;        // 시간
-    public Vector3 position;       // 위치
-    public string eventType;       // 이벤트 유형
-    public string description;     // 설명
+public class LocationData {
+    public string date;           // 날짜 (YYYYMMDD)
+    public string time;           // 시간 (HHMM)
+    public int milliseconds;      // 밀리초
+    public int pointNumber;       // 포인트 번호
+    public float locationX;       // X 좌표 (m)
+    public float locationY;       // Y 좌표 (m)
+    public DateTime GetTimestamp() // 타임스탬프 계산
 }
 ```
 
-### ExcelFileReader.cs
-CSV 파일을 파싱하여 EquipmentData 리스트로 변환
-- 자동 시간순 정렬
-- 에러 처리 포함
+### CSVDataLoader.cs
+CSV 파일 로딩 및 데이터 관리
+- 다중 CSV 파일 동시 로드
+- 시간순 자동 정렬 및 병합
+- 특정 시간의 데이터 추출
+- 위치 보간 기능
 
-### SimpleLocationController.cs
-메인 컨트롤러 - 전체 시스템 관리
-- UI 이벤트 처리
-- 타임라인 제어
-- 장비 생성 및 업데이트
+### TimelinePlaybackController.cs
+시간 기반 재생 제어 시스템
+- 재생/일시정지/정지 제어
+- 속도 조절 (0.25x ~ 8x)
+- 타임라인 스크러빙
+- 루프 재생 및 보간 설정
 
-### EquipmentMovementController.cs
-개별 장비의 부드러운 이동 처리
-- 선형 보간 (Lerp)
-- 지형 높이 맞춤
-- 이동 방향 회전
+### LocationVisualizer.cs
+3D 공간 시각화 엔진
+- 포인트별 색상 구분
+- Trail Renderer를 통한 궤적 표시
+- 실시간 라벨 업데이트
+- 동적 오브젝트 생성 및 관리
 
-### AlarmMarkerSystem.cs
-타임라인 알람 마커 관리
-- 동적 마커 생성
-- 이벤트 시각화
+### PlaybackUIManager.cs
+사용자 인터페이스 관리
+- 재생 컨트롤 버튼
+- 속도 조절 UI
+- 타임라인 슬라이더
+- 데이터 정보 표시
 
-## 커스터마이징
+### PlaybackManager.cs
+시스템 통합 매니저 (싱글톤)
+- 모든 컴포넌트 자동 설정
+- 중앙 제어 인터페이스
+- 이벤트 시스템 관리
 
-### 장비 모양 변경
-1. `Assets/Prefabs/EquipmentPrefab` 수정
-2. 메시, 머티리얼, 크기 조정
+## API 사용 예제
 
-### 지형 설정
-1. Terrain 오브젝트 선택
-2. Terrain 컴포넌트에서 높이맵, 텍스처 수정
+### 기본 사용법
+```csharp
+// 재생 시작
+PlaybackManager.Instance.StartPlayback();
 
-### UI 스타일
-1. UICanvas 하위 오브젝트 수정
-2. 버튼, 슬라이더 스타일 변경
+// 속도 설정
+PlaybackManager.Instance.SetPlaybackSpeed(2.0f);
+
+// 특정 시간으로 이동
+PlaybackManager.Instance.SeekToTime(30f);
+```
+
+### 이벤트 구독
+```csharp
+// 재생 업데이트 이벤트
+playbackController.OnPlaybackUpdate += (time, data) => {
+    Debug.Log($"현재 시간: {time:F2}초");
+};
+
+// 데이터 로드 완료 이벤트
+dataLoader.OnDataLoaded += () => {
+    Debug.Log("데이터 로드 완료!");
+};
+```
+
+### 시각화 설정
+```csharp
+// 궤적 표시 설정
+visualizer.SetShowTrails(true);
+visualizer.trailDuration = 10f;
+
+// 포인트 색상 커스터마이징
+visualizer.pointColors = new Color[] {
+    Color.red, Color.blue, Color.green
+};
+```
 
 ## 문제 해결
 
-### 카메라가 보이지 않음
-- Main Camera 오브젝트 확인
-- 위치: (0, 10, -30)
-- 태그: MainCamera
+### CSV 파일을 찾을 수 없음
+```csharp
+// CSVDataLoader.cs에서 경로 확인
+csvFilePath1 = "Documents/위츠측위 테스트 데이터/Raw Data/위치측위 Raw Data(스마트폰_1).csv"
+```
 
-### UI 버튼이 작동하지 않음
-- EventSystem 오브젝트 확인
-- StandaloneInputModule 컴포넌트 필요
+### 재생이 안 됨
+- PlaybackManager의 `autoLoadDataOnStart = true` 확인
+- 데이터가 로드되었는지 콘솔 로그 확인
 
-### 파일 로드 실패
-- CSV 파일 형식 확인
-- 헤더 라인 필수
-- UTF-8 인코딩 권장
+### 포인트가 보이지 않음
+- Scene 뷰에서 카메라 위치 조정
+- LocationVisualizer의 `heightOffset` 값 조정 (기본: 0.5)
+- `worldScale` 값 조정 (기본: 1.0)
+
+## 성능 최적화
+
+| 설정 | 성능 향상 | 영향 |
+|------|----------|------|
+| 보간 비활성화 | +20% | 움직임이 끊김 |
+| Trail 시간 감소 | +15% | 짧은 궤적 |
+| 라벨 비활성화 | +10% | 정보 표시 없음 |
 
 ## 확장 기능 아이디어
 
 1. **실시간 데이터 스트리밍**: 네트워크를 통한 실시간 위치 업데이트
-2. **다중 장비 필터링**: 특정 장비만 표시/숨기기
-3. **경로 시각화**: 이동 경로 라인 렌더링
-4. **3D 카메라 컨트롤**: 자유로운 카메라 이동
-5. **데이터 내보내기**: 분석 결과 CSV 저장
+2. **다중 데이터 소스**: 더 많은 기기의 데이터 동시 처리
+3. **고급 시각화**: 히트맵, 3D 경로, 속도 표시
+4. **데이터 분석**: 통계, 패턴 분석, 이상 감지
+5. **데이터 내보내기**: 분석 결과 CSV/JSON 저장
 
 ## 라이선스
 
