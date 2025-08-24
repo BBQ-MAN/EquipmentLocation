@@ -24,7 +24,8 @@ public class CSVDataLoader : MonoBehaviour
     
     void Start()
     {
-        LoadAllData();
+        // Don't auto-load data - wait for explicit LoadAllData() call
+        Debug.Log("CSVDataLoader: Ready to load data. Waiting for user to click Load button.");
     }
     
     public void LoadAllData()
@@ -62,10 +63,140 @@ public class CSVDataLoader : MonoBehaviour
         }
     }
     
+    public void LoadSingleFile(string filePath)
+    {
+        Debug.Log($"CSVDataLoader: LoadSingleFile called with: {filePath}");
+        
+        // Clear all data
+        smartphone1Data.Clear();
+        smartphone2Data.Clear();
+        allDataCombined.Clear();
+        
+        if (!File.Exists(filePath))
+        {
+            Debug.LogError($"CSV file not found: {filePath}");
+            return;
+        }
+        
+        // Load the single CSV file
+        // All data will be treated as coming from a single device
+        List<LocationData> singleFileData = new List<LocationData>();
+        LoadCSVDataAbsolute(filePath, singleFileData, 1); // Use device ID 1 for single file
+        
+        // Process data by point number (PTNUM)
+        // Group data by point number to create separate visualizations
+        var groupedByPoint = singleFileData.GroupBy(d => d.pointNumber);
+        
+        Debug.Log($"Found {groupedByPoint.Count()} unique point numbers in the file");
+        
+        // Assign each unique point number to a virtual device for visualization
+        int virtualDeviceId = 1;
+        foreach (var group in groupedByPoint)
+        {
+            foreach (var data in group)
+            {
+                // Override deviceId to create separate visualizations for each point
+                data.deviceId = virtualDeviceId;
+                allDataCombined.Add(data);
+            }
+            virtualDeviceId++;
+            
+            Debug.Log($"Point {group.Key}: {group.Count()} data points assigned to Device {virtualDeviceId - 1}");
+        }
+        
+        // Sort by timestamp
+        allDataCombined = allDataCombined.OrderBy(d => d.GetTimestamp()).ToList();
+        
+        if (allDataCombined.Count > 0)
+        {
+            startTime = allDataCombined[0].GetTimestamp();
+            endTime = allDataCombined[allDataCombined.Count - 1].GetTimestamp();
+            totalDuration = (float)(endTime - startTime).TotalSeconds;
+            
+            Debug.Log($"Single CSV file loaded successfully!");
+            Debug.Log($"File: {Path.GetFileName(filePath)}");
+            Debug.Log($"Total points: {allDataCombined.Count}");
+            Debug.Log($"Unique devices/points: {groupedByPoint.Count()}");
+            Debug.Log($"Duration: {totalDuration:F2} seconds");
+            Debug.Log($"Time range: {startTime:HH:mm:ss.fff} to {endTime:HH:mm:ss.fff}");
+            
+            OnDataLoaded?.Invoke();
+        }
+        else
+        {
+            Debug.LogWarning("No data loaded from CSV file!");
+        }
+    }
+    
+    public void LoadFromPath(string folderPath)
+    {
+        Debug.Log($"CSVDataLoader: LoadFromPath called with: {folderPath}");
+        
+        smartphone1Data.Clear();
+        smartphone2Data.Clear();
+        allDataCombined.Clear();
+        
+        // Look for smartphone1.csv and smartphone2.csv in the selected folder
+        string path1 = Path.Combine(folderPath, "smartphone1.csv");
+        string path2 = Path.Combine(folderPath, "smartphone2.csv");
+        
+        bool file1Exists = File.Exists(path1);
+        bool file2Exists = File.Exists(path2);
+        
+        Debug.Log($"Looking for files:");
+        Debug.Log($"  {path1}: {(file1Exists ? "Found" : "Not found")}");
+        Debug.Log($"  {path2}: {(file2Exists ? "Found" : "Not found")}");
+        
+        if (!file1Exists && !file2Exists)
+        {
+            Debug.LogError($"No CSV files found in {folderPath}. Please select a folder containing smartphone1.csv and/or smartphone2.csv");
+            return;
+        }
+        
+        // Load available files
+        if (file1Exists)
+        {
+            LoadCSVDataAbsolute(path1, smartphone1Data, 1);
+        }
+        
+        if (file2Exists)
+        {
+            LoadCSVDataAbsolute(path2, smartphone2Data, 2);
+        }
+        
+        // Combine and sort all data by timestamp
+        allDataCombined.AddRange(smartphone1Data);
+        allDataCombined.AddRange(smartphone2Data);
+        allDataCombined = allDataCombined.OrderBy(d => d.GetTimestamp()).ToList();
+        
+        if (allDataCombined.Count > 0)
+        {
+            startTime = allDataCombined[0].GetTimestamp();
+            endTime = allDataCombined[allDataCombined.Count - 1].GetTimestamp();
+            totalDuration = (float)(endTime - startTime).TotalSeconds;
+            
+            Debug.Log($"Data loaded successfully from external folder!");
+            Debug.Log($"Total points: {allDataCombined.Count}");
+            Debug.Log($"Duration: {totalDuration:F2} seconds");
+            Debug.Log($"Start time: {startTime:HH:mm:ss.fff}");
+            Debug.Log($"End time: {endTime:HH:mm:ss.fff}");
+            
+            OnDataLoaded?.Invoke();
+        }
+        else
+        {
+            Debug.LogWarning("No data loaded from CSV files!");
+        }
+    }
+    
     private void LoadCSVData(string relativePath, List<LocationData> dataList, int deviceId)
     {
         string fullPath = Path.Combine(Application.dataPath, "..", relativePath);
-        
+        LoadCSVDataAbsolute(fullPath, dataList, deviceId);
+    }
+    
+    private void LoadCSVDataAbsolute(string fullPath, List<LocationData> dataList, int deviceId)
+    {
         if (!File.Exists(fullPath))
         {
             Debug.LogError($"CSV file not found: {fullPath}");
@@ -74,7 +205,14 @@ public class CSVDataLoader : MonoBehaviour
         
         try
         {
-            string[] lines = File.ReadAllLines(fullPath);
+            // Use FileShare.ReadWrite to handle files that might be open in other applications
+            string[] lines;
+            using (FileStream fs = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (StreamReader sr = new StreamReader(fs))
+            {
+                string content = sr.ReadToEnd();
+                lines = content.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+            }
             
             // Skip header line
             for (int i = 1; i < lines.Length; i++)
@@ -101,11 +239,11 @@ public class CSVDataLoader : MonoBehaviour
                 }
             }
             
-            Debug.Log($"Loaded {dataList.Count} data points from Device {deviceId}");
+            Debug.Log($"Loaded {dataList.Count} data points from Device {deviceId} ({Path.GetFileName(fullPath)})");
         }
         catch (Exception e)
         {
-            Debug.LogError($"Error loading CSV file {relativePath}: {e.Message}");
+            Debug.LogError($"Error loading CSV file {fullPath}: {e.Message}");
         }
     }
     
@@ -139,21 +277,11 @@ public class CSVDataLoader : MonoBehaviour
     {
         DateTime targetTime = startTime.AddSeconds(elapsedSeconds);
         
-        // Get data for specific device
-        List<LocationData> deviceData;
-        if (deviceId == 1)
-        {
-            deviceData = smartphone1Data;
-        }
-        else if (deviceId == 2)
-        {
-            deviceData = smartphone2Data;
-        }
-        else
-        {
-            Debug.LogWarning($"CSVDataLoader: Invalid device ID {deviceId}");
-            return null;
-        }
+        // Get data for specific device from allDataCombined
+        List<LocationData> deviceData = allDataCombined
+            .Where(d => d.deviceId == deviceId)
+            .OrderBy(d => d.GetTimestamp())
+            .ToList();
         
         if (deviceData.Count == 0)
         {

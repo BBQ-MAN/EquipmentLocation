@@ -1,6 +1,8 @@
 using UnityEngine;
 using UnityEngine.UI;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 
 /// <summary>
 /// Main playback controller for equipment location visualization
@@ -11,12 +13,14 @@ public class PlaybackController : MonoBehaviour
     // Internal components - not shown in Inspector
     private CSVDataLoader dataLoader;
     private LocationVisualizer visualizer;
+    private Button loadButton;
     private Button playButton;
     private Button pauseButton;
     private Button stopButton;
     private Button resetButton;
     private Slider timelineSlider;
     private Text timeText;
+    private InputField csvPathInput;
     
     [Header("Playback Settings")]
     [Range(0.25f, 4.0f)]
@@ -27,6 +31,7 @@ public class PlaybackController : MonoBehaviour
     [SerializeField] private bool _isPlaying = false;
     [SerializeField] private float _currentTime = 0f;
     [SerializeField] private float totalDuration = 0f;
+    [SerializeField] private bool dataLoaded = false;
     
     // Public properties for external access
     public bool isPlaying => _isPlaying;
@@ -66,6 +71,19 @@ public class PlaybackController : MonoBehaviour
     {
         try
         {
+            // Try to find Load button and CSV input field
+            if (loadButton == null)
+            {
+                var loadGO = GameObject.Find("LoadButton");
+                if (loadGO != null) loadButton = loadGO.GetComponent<Button>();
+            }
+            
+            if (csvPathInput == null)
+            {
+                var inputGO = GameObject.Find("CSVPathInput");
+                if (inputGO != null) csvPathInput = inputGO.GetComponent<InputField>();
+            }
+            
             // Try to find UI buttons from the scene
             if (playButton == null)
             {
@@ -95,6 +113,14 @@ public class PlaybackController : MonoBehaviour
         {
             var sliderGO = GameObject.Find("TimelineSlider");
             if (sliderGO != null) timelineSlider = sliderGO.GetComponent<Slider>();
+        }
+        
+        // Setup Load button
+        if (loadButton != null)
+        {
+            loadButton.onClick.RemoveAllListeners();
+            loadButton.onClick.AddListener(LoadCSVFiles);
+            Debug.Log("PlaybackController: Load button connected");
         }
         
         // Clear existing listeners and add new ones
@@ -136,6 +162,9 @@ public class PlaybackController : MonoBehaviour
             timelineSlider.onValueChanged.AddListener(OnSliderChanged);
             Debug.Log("PlaybackController: Timeline slider connected");
         }
+        
+        // Set initial UI state - disable playback controls until data is loaded
+        SetPlaybackUIEnabled(false);
         }
         catch (System.Exception e)
         {
@@ -143,14 +172,90 @@ public class PlaybackController : MonoBehaviour
         }
     }
     
+    void SetPlaybackUIEnabled(bool enabled)
+    {
+        // Enable/disable playback controls based on data load status
+        if (playButton != null) playButton.interactable = enabled;
+        if (pauseButton != null) pauseButton.interactable = enabled;
+        if (stopButton != null) stopButton.interactable = enabled;
+        if (resetButton != null) resetButton.interactable = enabled;
+        if (timelineSlider != null) timelineSlider.interactable = enabled;
+        
+        Debug.Log($"PlaybackController: Playback UI {(enabled ? "enabled" : "disabled")}");
+    }
+    
     void OnDataLoaded()
     {
         Debug.Log($"PlaybackController: Data loaded! Duration: {dataLoader.totalDuration}");
+        dataLoaded = true;
+        totalDuration = dataLoader.totalDuration;
+        
+        // Enable playback UI now that data is loaded
+        SetPlaybackUIEnabled(true);
+        
         UpdateUI();
+    }
+    
+    public void LoadCSVFiles()
+    {
+        Debug.Log("PlaybackController: Load button clicked - Opening file browser");
+        
+        // Stop any current playback
+        if (_isPlaying)
+        {
+            Stop();
+        }
+        
+        // Open file browser to select single CSV file
+        string selectedFile = "";
+        
+        #if UNITY_EDITOR
+        // Use Unity Editor file browser when in editor
+        selectedFile = UnityEditor.EditorUtility.OpenFilePanel("Select CSV File", "", "csv");
+        #else
+        // Use Windows file browser in build
+        selectedFile = FileBrowser.OpenFileDialog("Select CSV File", "CSV Files\0*.csv\0All Files\0*.*\0");
+        #endif
+        
+        if (string.IsNullOrEmpty(selectedFile))
+        {
+            Debug.Log("PlaybackController: No file selected");
+            return;
+        }
+        
+        Debug.Log($"PlaybackController: Selected file: {selectedFile}");
+        
+        // Update input field if it exists
+        if (csvPathInput != null)
+        {
+            csvPathInput.text = selectedFile;
+        }
+        
+        // Reset data loaded flag
+        dataLoaded = false;
+        totalDuration = 0f;
+        _currentTime = 0f;
+        
+        // Load data from selected file
+        if (dataLoader != null)
+        {
+            Debug.Log($"PlaybackController: Loading CSV data from {selectedFile}");
+            dataLoader.LoadSingleFile(selectedFile);
+        }
+        else
+        {
+            Debug.LogError("PlaybackController: CSVDataLoader not found!");
+        }
     }
     
     public void Play()
     {
+        if (!dataLoaded)
+        {
+            Debug.LogWarning("PlaybackController: Cannot play - no data loaded. Please click Load button first.");
+            return;
+        }
+        
         if (dataLoader != null && dataLoader.totalDuration > 0)
         {
             _isPlaying = true;
@@ -290,14 +395,22 @@ public class PlaybackController : MonoBehaviour
             return;
         }
             
-        // Get data for current time
-        var device1Data = dataLoader.GetInterpolatedDataForDevice(1, _currentTime);
-        var device2Data = dataLoader.GetInterpolatedDataForDevice(2, _currentTime);
+        // Get unique device IDs from loaded data
+        var uniqueDeviceIds = dataLoader.allDataCombined
+            .Select(d => d.deviceId)
+            .Distinct()
+            .ToList();
         
-        // Create list for visualizer
+        // Get interpolated data for each device
         var currentData = new List<LocationData>();
-        if (device1Data != null) currentData.Add(device1Data);
-        if (device2Data != null) currentData.Add(device2Data);
+        foreach (int deviceId in uniqueDeviceIds)
+        {
+            var deviceData = dataLoader.GetInterpolatedDataForDevice(deviceId, _currentTime);
+            if (deviceData != null)
+            {
+                currentData.Add(deviceData);
+            }
+        }
         
         // Call visualizer update directly using reflection
         if (currentData.Count > 0)

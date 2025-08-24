@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 public class LocationVisualizer : MonoBehaviour
@@ -139,13 +140,31 @@ public class LocationVisualizer : MonoBehaviour
         // Clear existing visualization
         ClearVisualization();
         
-        // Create one object for smartphone 1 (device ID 1)
-        CreatePointObject(1);
-        Debug.Log("LocationVisualizer: Created object for Device 1 (Smartphone 1)");
-        
-        // Create one object for smartphone 2 (device ID 2)
-        CreatePointObject(2);
-        Debug.Log("LocationVisualizer: Created object for Device 2 (Smartphone 2)");
+        // Get unique device IDs from loaded data
+        if (dataLoader != null && dataLoader.allDataCombined != null)
+        {
+            var uniqueDeviceIds = dataLoader.allDataCombined
+                .Select(d => d.deviceId)
+                .Distinct()
+                .OrderBy(id => id)
+                .ToList();
+            
+            Debug.Log($"LocationVisualizer: Found {uniqueDeviceIds.Count} unique devices/points");
+            
+            // Create visualization object for each unique device/point
+            foreach (int deviceId in uniqueDeviceIds)
+            {
+                CreatePointObject(deviceId);
+                Debug.Log($"LocationVisualizer: Created object for Device/Point {deviceId}");
+            }
+        }
+        else
+        {
+            // Fallback to default 2 devices if no data
+            CreatePointObject(1);
+            CreatePointObject(2);
+            Debug.Log("LocationVisualizer: Created default objects for Device 1 and 2");
+        }
         
         Debug.Log("LocationVisualizer: All device objects created");
     }
